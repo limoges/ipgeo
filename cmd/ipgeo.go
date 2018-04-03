@@ -2,18 +2,55 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
+	"github.com/limoges/ipgeo"
 	"github.com/oklog/run"
 )
+
+// A LocateRequest represents a request to geolocate a given address.
+type LocateRequest struct {
+	Addr net.IP // An IPv4 address
+}
+
+// DecodeLocateRequest inspects an http.Request and extracts the necessary elements
+// into a valid LocateRequest.
+func DecodeLocateRequest(req *http.Request) (*LocateRequest, error) {
+	ip := filepath.Base(req.URL.Path)
+	addr := net.ParseIP(ip)
+	if addr == nil {
+		return nil, fmt.Errorf("invalid request: %s", ip)
+	}
+	addr = addr.To4()
+	if addr == nil {
+		return nil, fmt.Errorf("unsupported ipv6: %s", ip)
+	}
+	return &LocateRequest{Addr: addr}, nil
+}
+
+// A LocateResponse represents a response to a LocateRequest.
+type LocateResponse struct {
+	Country      string `json:"country"`
+	Subdivision1 string `json:"subdivision1"`
+	Subdivision2 string `json:"subdivision2"`
+	City         string `json:"city"`
+}
+
+// An IPGeolocator is a
+type IPGeolocator interface {
+	LocateIP(addr net.IP) (ipgeo.Location, error)
+}
 
 // main launches the program and returns an appropriate error.
 func mainWithError() error {
@@ -36,9 +73,37 @@ func mainWithError() error {
 			locsFilepath, netsFilepath, port, verbose)
 	}
 
+	var locator IPGeolocator
+
 	// HTTP handler to respond to geolocation requests.
 	locate := func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, r)
+		request, err := DecodeLocateRequest(r)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintln(w, err)
+			return
+		}
+
+		location, err := locator.LocateIP(request.Addr)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintln(w, err)
+			return
+		}
+		response := LocateResponse{
+			Country:      location.Country,
+			Subdivision1: location.Subdivision1,
+			Subdivision2: location.Subdivision2,
+			City:         location.City,
+		}
+		buf, err := json.MarshalIndent(response, "", "\t")
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintln(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write(buf)
 	}
 
 	mux := http.NewServeMux()
