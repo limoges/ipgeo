@@ -20,6 +20,20 @@ import (
 	"github.com/oklog/run"
 )
 
+// TimedNetworkLocator is used to simply log a metric to standard output.
+type TimedNetworkLocator struct {
+	next ipgeo.NetworkLocator
+}
+
+func (l TimedNetworkLocator) FindNetworkLocation(addr net.IP) (ipgeo.LocationID, error) {
+	before := time.Now()
+	defer func() {
+		elapsed := time.Since(before)
+		log.Printf("FindNetworkLocation for %s took %v", addr, elapsed)
+	}()
+	return l.next.FindNetworkLocation(addr)
+}
+
 // main launches the program and returns an appropriate error.
 func mainWithError() error {
 	var (
@@ -59,7 +73,7 @@ func mainWithError() error {
 	}
 
 	locator = ipgeo.Geolocator{
-		NetLoc:     netloc,
+		NetLoc:     TimedNetworkLocator{next: netloc},
 		Repository: repo,
 	}
 

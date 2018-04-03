@@ -12,7 +12,7 @@ import (
 // NetworkLocator is a read-only in-memory implementation of a ipgeo.NetworkLocator.
 // It supports reification from a simple csv file.
 type NetworkLocator struct {
-	entries []networkEntry
+	networks networkEntries
 }
 
 // NewNetworkLocator instantiates a NetworkLocator from the provided CSV-formatted
@@ -28,36 +28,33 @@ func NewNetworkLocatorFromFs(fs afero.Fs, name string) (*NetworkLocator, error) 
 	if err != nil {
 		return nil, err
 	}
-	var entries []networkEntry
+
+	networks := newNetworkTrie()
 	parseCSV(f, func(rec []string) error {
 		entry, err := parseNetworkEntry(rec)
 		if err != nil {
 			return err
 		}
-		entries = append(entries, entry)
-		return nil
+		return networks.Insert(entry)
 	})
-	return &NetworkLocator{entries: entries}, nil
+	return &NetworkLocator{networks: networks}, nil
 }
 
-// TODO: This is definitely sub-optimal; Using a prefix-tree, we could get O(k)
-// where k is the len(key).
 // NetworkLocator maps an IPv4 address to the highest resolution network known
-// to the NetworkLocator. The current implementation takes O(N) time.
+// to the NetworkLocator. This implementation uses a prefix tree (trie) to provide
+// O(k) time access.
 func (m NetworkLocator) FindNetworkLocation(addr net.IP) (ipgeo.LocationID, error) {
-	var hits []networkEntry
-	for _, entry := range m.entries {
-		if entry.Network.Contains(addr) {
-			hits = append(hits, entry)
-		}
+	matches, err := m.networks.FindNetworks(addr)
+	if err != nil {
+		return ipgeo.LocationID(0), err
 	}
-	switch len(hits) {
+	switch len(matches) {
 	case 0:
 		return ipgeo.LocationID(0), fmt.Errorf("no network for: %s", addr)
 	case 1:
-		return hits[0].LocationID, nil
+		return matches[0].LocationID, nil
 	default:
-		return longestEntry(hits).LocationID, nil
+		return longestEntry(matches).LocationID, nil
 	}
 }
 
