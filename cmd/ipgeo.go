@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/limoges/ipgeo"
+	"github.com/limoges/ipgeo/inmem"
 	"github.com/oklog/run"
 )
 
@@ -40,8 +41,29 @@ func mainWithError() error {
 			locsFilepath, netsFilepath, port, verbose)
 	}
 
+	var (
+		netloc  ipgeo.NetworkLocator
+		repo    ipgeo.LocationRepository
+		locator IPGeolocator
+		err     error
+	)
+
+	netloc, err = inmem.NewNetworkLocator(netsFilepath)
+	if err != nil {
+		return err
+	}
+
+	repo, err = inmem.NewLocationRepo(locsFilepath)
+	if err != nil {
+		return err
+	}
+
+	locator = ipgeo.Geolocator{
+		NetLoc:     netloc,
+		Repository: repo,
+	}
+
 	locate := func(w http.ResponseWriter, r *http.Request) {
-		var locator IPGeolocator
 		handler(locator, w, r)
 	}
 
@@ -111,7 +133,8 @@ func main() {
 	}
 }
 
-// An IPGeolocator is a
+// IPGeolocator represents a construct which implements the LocateIP method
+// which is used for ip-based geolocation.
 type IPGeolocator interface {
 	LocateIP(addr net.IP) (ipgeo.Location, error)
 }
@@ -154,8 +177,13 @@ func handler(l IPGeolocator, w http.ResponseWriter, r *http.Request) {
 
 	location, err := l.LocateIP(request.Addr)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintln(w, err)
+		switch err.(type) {
+		case ipgeo.UnknownLocationError:
+			w.WriteHeader(http.StatusNotFound)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintln(w, err)
+		}
 		return
 	}
 

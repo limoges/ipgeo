@@ -22,21 +22,23 @@ type LocationRepository interface {
 	FindByID(id LocationID) (Location, error)
 }
 
-// A NetworkMapper maps an IP address to a known network.
-type NetworkMapper interface {
-	FindNetwork(addr net.IP) (*net.IPNet, error)
+// A NetworkLocator maps an IP address to a known network.
+type NetworkLocator interface {
+	FindNetworkLocation(addr net.IP) (LocationID, error)
 }
 
-// A NetworkLocator maps a known network to a location.
-type NetworkLocator interface {
-	Map(network *net.IPNet) (LocationID, error)
+type UnknownLocationError struct {
+	Addr net.IP
+}
+
+func (e UnknownLocationError) Error() string {
+	return fmt.Sprintf("unknown location for %s", e.Addr)
 }
 
 // A Geolocator is a data structure holding the necessary components to allow
 // ip-based geolocation. This Locator operates by first finding a network match
 // for an ip, then mapping the location associated with this network.
 type Geolocator struct {
-	Mapper     NetworkMapper
 	NetLoc     NetworkLocator
 	Repository LocationRepository
 }
@@ -45,13 +47,9 @@ type Geolocator struct {
 // approximate geographic location associated with the IP address.
 func (l Geolocator) LocateIP(addr net.IP) (Location, error) {
 	var loc Location
-	network, err := l.Mapper.FindNetwork(addr)
+	locationID, err := l.NetLoc.FindNetworkLocation(addr)
 	if err != nil {
-		return loc, fmt.Errorf("unknown network for: %s", addr)
-	}
-	locationID, err := l.NetLoc.Map(network)
-	if err != nil {
-		return loc, fmt.Errorf("unknown location for: %s", network)
+		return loc, UnknownLocationError{Addr: addr}
 	}
 	location, err := l.Repository.FindByID(locationID)
 	if err != nil {
