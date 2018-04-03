@@ -1,5 +1,5 @@
 
-default: run
+default: test run
 
 run:
 	go run cmd/ipgeo.go \

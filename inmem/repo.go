@@ -34,7 +34,7 @@ func NewLocationRepoFromFs(fs afero.Fs, name string) (*LocationRepo, error) {
 			return err
 		}
 		if cur, ok := locations[entry.ID]; ok {
-			return fmt.Errorf("duplicate entry: old %s new %s", cur, entry)
+			return fmt.Errorf("duplicate entry: old %v new %v", cur, entry)
 		}
 		locations[entry.ID] = entry
 		return nil
