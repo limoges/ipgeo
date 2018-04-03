@@ -55,7 +55,7 @@ func (l Geolocator) LocateIP(addr net.IP) (Location, error) {
 	}
 	location, err := l.Repository.FindByID(locationID)
 	if err != nil {
-		return loc, fmt.Errorf("location unavailable: %s", locationID)
+		return loc, fmt.Errorf("location unavailable: %d", locationID)
 	}
 	return location, nil
 }

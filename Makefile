@@ -7,3 +7,5 @@ run:
 		--networks data/ipv4.csv \
 		--port 8080 \
 		--verbose
+test:
+	go test ./...
